@@ -1,0 +1,180 @@
+version: '3.8'
+
+x-airflow-common: &airflow-common
+  build:
+    context: .
+    dockerfile: docker/Dockerfile.airflow
+  environment:
+    - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+    - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
+    - AIRFLOW__CORE__FERNET_KEY=your_fernet_key_here
+    - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
+    - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+    - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    - AWS_REGION=${AWS_REGION:-us-east-1}
+    - S3_BUCKET_NAME=${S3_BUCKET_NAME:-restaurant-reviews-lake}
+    - MONGO_URI=mongodb://mongo:27017
+    - MONGO_DB=restaurant_reviews
+    - POSTGRES_HOST=postgres-warehouse
+    - POSTGRES_PORT=5432
+    - POSTGRES_DB=review_warehouse
+    - POSTGRES_USER=pipeline_user
+    - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_password}
+  volumes:
+    - ./dags:/opt/airflow/dags
+    - ./scripts:/opt/airflow/scripts
+    - ./config:/opt/airflow/config
+    - ./data:/opt/airflow/data
+    - ./spark_jobs:/opt/airflow/spark_jobs
+  depends_on:
+    postgres-airflow:
+      condition: service_healthy
+    mongo:
+      condition: service_started
+    postgres-warehouse:
+      condition: service_healthy
+
+services:
+  # ============================================================
+  # AIRFLOW SERVICES
+  # ============================================================
+  postgres-airflow:
+    image: postgres:15
+    container_name: postgres-airflow
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_airflow_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init
+    entrypoint: >
+      bash -c "
+        airflow db migrate &&
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin || true
+      "
+    restart: "no"
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver
+    command: airflow webserver --port 8080
+    ports:
+      - "8080:8080"
+    restart: always
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler
+    command: airflow scheduler
+    restart: always
+
+  # ============================================================
+  # DATA STORES
+  # ============================================================
+  mongo:
+    image: mongo:7.0
+    container_name: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    restart: always
+
+  postgres-warehouse:
+    image: postgres:15
+    container_name: postgres-warehouse
+    environment:
+      POSTGRES_USER: pipeline_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-secure_password}
+      POSTGRES_DB: review_warehouse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_warehouse_data:/var/lib/postgresql/data
+      - ./sql/create_warehouse.sql:/docker-entrypoint-initdb.d/01_create_warehouse.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pipeline_user -d review_warehouse"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # ============================================================
+  # SPARK
+  # ============================================================
+  spark-master:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spark
+    container_name: spark-master
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "7077:7077"
+      - "8081:8080"
+    volumes:
+      - ./spark_jobs:/opt/spark-jobs
+      - ./data:/opt/spark-data
+    restart: always
+
+  spark-worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spark
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ./spark_jobs:/opt/spark-jobs
+      - ./data:/opt/spark-data
+    restart: always
+
+  # ============================================================
+  # FRONTEND / API
+  # ============================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    container_name: frontend
+    ports:
+      - "5000:5000"
+    environment:
+      - MONGO_URI=mongodb://mongo:27017
+      - MONGO_DB=restaurant_reviews
+      - POSTGRES_HOST=postgres-warehouse
+      - POSTGRES_PORT=5432
+      - POSTGRES_DB=review_warehouse
+      - POSTGRES_USER=pipeline_user
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_password}
+    depends_on:
+      - mongo
+      - postgres-warehouse
+    restart: always
+
+volumes:
+  postgres_airflow_data:
+  postgres_warehouse_data:
+  mongo_data:

@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🍽️ Restaurant Recommendations</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1>🍽️ Restaurant Intelligence</h1>
+            <p class="subtitle">AI-Powered Restaurant Recommendations</p>
+        </div>
+    </header>
+
+    <main class="container">
+        <!-- Filters Section -->
+        <section class="filters">
+            <h2>Find Your Perfect Restaurant</h2>
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label for="min-rating">Minimum Rating</label>
+                    <select id="min-rating">
+                        <option value="">Any</option>
+                        <option value="3">3+ Stars</option>
+                        <option value="3.5">3.5+ Stars</option>
+                        <option value="4">4+ Stars</option>
+                        <option value="4.5">4.5+ Stars</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="cuisine">Cuisine Type</label>
+                    <select id="cuisine">
+                        <option value="">All Cuisines</option>
+                        <option value="italian">Italian</option>
+                        <option value="mexican">Mexican</option>
+                        <option value="japanese">Japanese</option>
+                        <option value="indian">Indian</option>
+                        <option value="american">American</option>
+                        <option value="chinese">Chinese</option>
+                    </select>
+                </div>
+                <button id="search-btn" onclick="loadRecommendations()">
+                    🔍 Search
+                </button>
+            </div>
+        </section>
+
+        <!-- Pipeline Status -->
+        <section class="status-bar" id="status-bar">
+            <span class="status-dot"></span>
+            <span id="status-text">Loading pipeline status...</span>
+        </section>
+
+        <!-- Recommendations Grid -->
+        <section class="recommendations" id="recommendations">
+            <h2>Top Recommendations</h2>
+            <div class="grid" id="restaurant-grid">
+                <div class="loading">Loading recommendations...</div>
+            </div>
+        </section>
+
+        <!-- Sentiment Analytics -->
+        <section class="analytics">
+            <h2>Sentiment Analytics</h2>
+            <div class="analytics-grid" id="analytics-grid">
+                <div class="loading">Loading analytics...</div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>Powered by NLP Sentiment Analysis | Data refreshed daily via Apache Airflow</p>
+        </div>
+    </footer>
+
+    <script>
+        const API_BASE = '/api/v1';
+
+        async function loadRecommendations() {
+            const minRating = document.getElementById('min-rating').value;
+            const cuisine = document.getElementById('cuisine').value;
+
+            let url = `${API_BASE}/recommendations?limit=20`;
+            if (minRating) url += `&min_rating=${minRating}`;
+            if (cuisine) url += `&cuisine=${cuisine}`;
+
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                renderRecommendations(data.recommendations || []);
+            } catch (error) {
+                document.getElementById('restaurant-grid').innerHTML =
+                    '<div class="error">Failed to load recommendations. Is the pipeline running?</div>';
+            }
+        }
+
+        function renderRecommendations(recommendations) {
+            const grid = document.getElementById('restaurant-grid');
+
+            if (!recommendations.length) {
+                grid.innerHTML = '<div class="empty">No recommendations found. Run the pipeline first!</div>';
+                return;
+            }
+
+            grid.innerHTML = recommendations.map((r, i) => `
+                <div class="restaurant-card">
+                    <div class="card-header">
+                        <span class="rank">#${r.rank || i + 1}</span>
+                        <h3>${r.restaurant_name || 'Unknown Restaurant'}</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="score-row">
+                            <div class="score">
+                                <span class="score-value">${(r.avg_predicted_score || 0).toFixed(1)}</span>
+                                <span class="score-label">NLP Score</span>
+                            </div>
+                            <div class="score">
+                                <span class="score-value">${(r.recommendation_score || 0).toFixed(1)}</span>
+                                <span class="score-label">Rec. Score</span>
+                            </div>
+                            <div class="score">
+                                <span class="score-value">${r.review_count || 0}</span>
+                                <span class="score-label">Reviews</span>
+                            </div>
+                        </div>
+                        <div class="sentiment-bar">
+                            <div class="positive" style="width: ${(r.positive_ratio || 0) * 100}%">
+                                ${((r.positive_ratio || 0) * 100).toFixed(0)}% positive
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function loadHealthStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                const statusText = document.getElementById('status-text');
+                const statusBar = document.getElementById('status-bar');
+                const c = data.collections || {};
+                statusText.textContent =
+                    `Pipeline Active | ${c.restaurants || 0} restaurants | ` +
+                    `${c.raw_reviews || 0} raw reviews | ` +
+                    `${c.processed_reviews || 0} processed`;
+                statusBar.classList.add('active');
+            } catch {
+                document.getElementById('status-text').textContent = 'Pipeline offline';
+            }
+        }
+
+        async function loadAnalytics() {
+            try {
+                const response = await fetch(`${API_BASE}/analytics/sentiment`);
+                const data = await response.json();
+                renderAnalytics(data.analytics || []);
+            } catch {
+                document.getElementById('analytics-grid').innerHTML =
+                    '<div class="error">Analytics unavailable</div>';
+            }
+        }
+
+        function renderAnalytics(analytics) {
+            const grid = document.getElementById('analytics-grid');
+            if (!analytics.length) {
+                grid.innerHTML = '<div class="empty">No analytics data yet</div>';
+                return;
+            }
+
+            grid.innerHTML = analytics.slice(0, 10).map(a => `
+                <div class="analytics-card">
+                    <h4>${a.name}</h4>
+                    <div class="metrics">
+                        <span>NLP: <strong>${a.avg_nlp_score}</strong></span>
+                        <span>Actual: <strong>${a.avg_actual_rating}</strong></span>
+                        <span>Reviews: <strong>${a.prediction_count}</strong></span>
+                        <span>👍 ${a.positive_count} | 👎 ${a.negative_count}</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Initialize
+        loadHealthStatus();
+        loadRecommendations();
+        loadAnalytics();
+    </script>
+</body>
+</html>

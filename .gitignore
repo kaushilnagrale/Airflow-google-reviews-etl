@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Environment
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Data
+data/raw/*
+data/processed/*
+data/models/*
+!data/**/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Docker
+docker-compose.override.yml
+
+# Testing
+htmlcov/
+.coverage
+.pytest_cache/
+
+# Airflow
+airflow_home/
+airflow.db
+airflow-webserver.pid
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Notebooks
+.ipynb_checkpoints/
