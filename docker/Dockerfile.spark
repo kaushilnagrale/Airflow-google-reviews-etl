@@ -1,4 +1,4 @@
-FROM bitnami/spark:3.5
+FROM apache/spark:3.5.1-scala2.12-java17-python3-r-ubuntu
 
 USER root
 
@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir \
 
 COPY spark_jobs/ /opt/spark-jobs/
 
-USER 1001
+USER spark
