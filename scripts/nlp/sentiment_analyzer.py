@@ -22,7 +22,7 @@ class SentimentAnalyzer:
     """
 
     def __init__(self, predictor: ReviewScorePredictor = None):
-        self.predictor = predictor or ReviewScorePredictor()
+        self.predictor = predictor
         self.rec_config = config.recommendation_config
 
     def analyze_restaurant(self, reviews: list[dict]) -> dict:
@@ -39,7 +39,7 @@ class SentimentAnalyzer:
         if not reviews:
             return self._empty_analysis()
 
-        processed = self.predictor.process_reviews(reviews)
+        processed = self._ensure_scored_reviews(reviews)
 
         scores = [r["predicted_score"] for r in processed]
         confidences = [r["confidence"] for r in processed]
@@ -79,6 +79,43 @@ class SentimentAnalyzer:
             "processed_reviews": processed,
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
         }
+
+    def _ensure_scored_reviews(self, reviews: list[dict]) -> list[dict]:
+        """
+        Reuse existing NLP outputs when available.
+        Falls back to model inference only for reviews missing prediction fields.
+        """
+        ready_with_idx: list[tuple[int, dict]] = []
+        missing_with_idx: list[tuple[int, dict]] = []
+
+        for idx, review in enumerate(reviews):
+            has_score = review.get("predicted_score") is not None
+            if has_score:
+                normalized = dict(review)
+                if "sentiment_label" not in normalized and "sentiment" in normalized:
+                    normalized["sentiment_label"] = normalized["sentiment"]
+                normalized["confidence"] = float(normalized.get("confidence", 0.0))
+                ready_with_idx.append((idx, normalized))
+            else:
+                missing_with_idx.append((idx, review))
+
+        if missing_with_idx:
+            if self.predictor is None:
+                logger.info("Initializing NLP predictor for fallback inference")
+                self.predictor = ReviewScorePredictor()
+            logger.warning(
+                "Found %s/%s reviews without predicted_score; running fallback inference",
+                len(missing_with_idx),
+                len(reviews),
+            )
+            inferred = self.predictor.process_reviews([r for _, r in missing_with_idx])
+            ready_with_idx.extend(
+                (missing_with_idx[i][0], inferred_review)
+                for i, inferred_review in enumerate(inferred)
+            )
+
+        ready_with_idx.sort(key=lambda x: x[0])
+        return [review for _, review in ready_with_idx]
 
     def _compute_recency_weighted_score(self, reviews: list[dict]) -> float:
         """
