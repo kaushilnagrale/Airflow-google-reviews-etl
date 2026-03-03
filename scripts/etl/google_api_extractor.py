@@ -95,7 +95,18 @@ class GoogleAPIExtractor:
                 params["pagetoken"] = next_page_token
                 time.sleep(2)  # Google requires delay between page token requests
 
-            data = self._make_request("nearbysearch", params)
+            try:
+                data = self._make_request("nearbysearch", params)
+            except Exception as e:
+                # Some API keys allow initial pages but deny later page token requests.
+                # Keep the results collected so far instead of failing the full location.
+                if next_page_token and all_results and "REQUEST_DENIED" in str(e):
+                    logger.warning(
+                        "Pagination denied for nearby search; "
+                        f"continuing with {len(all_results)} collected restaurants"
+                    )
+                    break
+                raise
             results = data.get("results", [])
             all_results.extend(results)
 
@@ -178,7 +189,13 @@ class GoogleAPIExtractor:
 
         for location in locations:
             logger.info(f"Processing location: {location['name']}")
-            restaurants = self.search_restaurants(location["lat"], location["lng"])
+            try:
+                restaurants = self.search_restaurants(location["lat"], location["lng"])
+            except Exception as e:
+                logger.error(
+                    f"Skipping location {location['name']} due to search failure: {e}"
+                )
+                continue
 
             for restaurant in restaurants:
                 place_id = restaurant.get("place_id")

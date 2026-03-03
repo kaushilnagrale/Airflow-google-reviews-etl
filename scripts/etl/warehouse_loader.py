@@ -132,10 +132,36 @@ class WarehouseLoader:
 
         try:
             with self.conn.cursor() as cur:
-                execute_batch(cur, query, predictions, page_size=100)
+                # Guard FK integrity: only load predictions for reviews present in fact_reviews.
+                review_ids = [p["review_id"] for p in predictions if p.get("review_id")]
+                cur.execute(
+                    "SELECT review_id FROM fact_reviews WHERE review_id = ANY(%s)",
+                    (review_ids,),
+                )
+                valid_review_ids = {row[0] for row in cur.fetchall()}
+                filtered_predictions = [
+                    p for p in predictions if p.get("review_id") in valid_review_ids
+                ]
+                skipped = len(predictions) - len(filtered_predictions)
+
+                if not filtered_predictions:
+                    logger.warning(
+                        "Skipped all predictions because matching fact_reviews rows were not found"
+                    )
+                    self.conn.rollback()
+                    return 0
+
+                if skipped:
+                    logger.warning(
+                        f"Skipped {skipped} predictions with missing review_id in fact_reviews"
+                    )
+
+                execute_batch(cur, query, filtered_predictions, page_size=100)
             self.conn.commit()
-            logger.info(f"Loaded {len(predictions)} predictions into fact_predictions")
-            return len(predictions)
+            logger.info(
+                f"Loaded {len(filtered_predictions)} predictions into fact_predictions"
+            )
+            return len(filtered_predictions)
         except Exception as e:
             self.conn.rollback()
             logger.error(f"Failed to load fact_predictions: {e}")

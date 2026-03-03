@@ -78,7 +78,7 @@ recommendation:
 
 spark:
   app_name: "RestaurantReviewPipeline"
-  master: "spark://spark-master:7077"
+  master: "local[*]"
   config:
     spark.executor.memory: "2g"
     spark.driver.memory: "1g"
