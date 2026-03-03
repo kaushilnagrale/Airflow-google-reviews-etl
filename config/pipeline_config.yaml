@@ -21,17 +21,19 @@ google_api:
     retry_max: 3
     retry_backoff: 2
 
-  # Locations to search (lat, lng)
+  # Locations searched when no user GPS is available.
+  # Tempe is the primary default; the extractor will fall back to it when the
+  # user's device supplies coordinates at runtime via run_full_extraction().
   search_locations:
+    - name: "Tempe"         # default
+      lat: 33.4255
+      lng: -111.9400
     - name: "Phoenix Downtown"
       lat: 33.4484
       lng: -112.0740
     - name: "Scottsdale"
       lat: 33.4942
       lng: -111.9261
-    - name: "Tempe"
-      lat: 33.4255
-      lng: -111.9400
 
 aws_s3:
   bucket: "restaurant-reviews-lake"

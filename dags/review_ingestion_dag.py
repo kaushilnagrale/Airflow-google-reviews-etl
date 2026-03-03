@@ -27,16 +27,29 @@ default_args = {
 
 # ─── Task callables ─────────────────────────────────────────
 def extract_reviews(**context):
-    """Extract restaurant reviews from Google Places API."""
+    """Extract restaurant reviews from Google Places API.
+
+    GPS coordinates can be passed via DAG conf at trigger time:
+        {"user_lat": 33.4255, "user_lng": -111.9400, "location_name": "Tempe"}
+    When absent, defaults to the locations in pipeline_config.yaml (Tempe first).
+    """
     from scripts.etl.google_api_extractor import GoogleAPIExtractor
+
+    dag_conf = context.get("dag_run").conf or {}
+    user_lat = dag_conf.get("user_lat")
+    user_lng = dag_conf.get("user_lng")
+    location_name = dag_conf.get("location_name")
 
     extractor = GoogleAPIExtractor()
     all_data = []
 
-    for batch in extractor.run_full_extraction():
+    for batch in extractor.run_full_extraction(
+        user_lat=user_lat,
+        user_lng=user_lng,
+        location_name=location_name,
+    ):
         all_data.append(batch)
 
-    # Push data to XCom for downstream tasks
     context["ti"].xcom_push(key="extraction_data", value=all_data)
     context["ti"].xcom_push(key="batch_count", value=len(all_data))
     return f"Extracted data for {len(all_data)} restaurants"

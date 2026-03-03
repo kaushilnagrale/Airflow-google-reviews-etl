@@ -3,191 +3,503 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🍽️ Restaurant Recommendations</title>
+    <title>Restaurant Intelligence</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <header>
-        <div class="container">
-            <h1>🍽️ Restaurant Intelligence</h1>
-            <p class="subtitle">AI-Powered Restaurant Recommendations</p>
+
+<header>
+    <div class="container">
+        <h1>Restaurant Intelligence</h1>
+        <p class="subtitle">AI-Powered Reviews &amp; Recommendations</p>
+    </div>
+</header>
+
+<main class="container">
+
+    <!-- Status Bar -->
+    <div class="status-bar" id="status-bar">
+        <span class="status-dot"></span>
+        <span id="status-text">Checking pipeline status&#8230;</span>
+    </div>
+
+    <!-- ── Single unified control panel ── -->
+    <section class="card control-panel">
+        <div class="panel-row">
+
+            <!-- Left: search filters -->
+            <div class="panel-group">
+                <h2>Find Restaurants</h2>
+                <div class="controls-row">
+                    <div class="filter-group grow">
+                        <label for="search-q">Name</label>
+                        <input id="search-q" type="text" placeholder="Search restaurant name&#8230;" />
+                    </div>
+                    <div class="filter-group">
+                        <label for="min-rating">Min Rating</label>
+                        <select id="min-rating">
+                            <option value="">Any</option>
+                            <option value="3">3+</option>
+                            <option value="3.5">3.5+</option>
+                            <option value="4">4+</option>
+                            <option value="4.5">4.5+</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label for="cuisine">Type</label>
+                        <select id="cuisine">
+                            <option value="">All</option>
+                            <option value="bar">Bar</option>
+                            <option value="cafe">Cafe</option>
+                            <option value="bakery">Bakery</option>
+                            <option value="night_club">Night Club</option>
+                            <option value="meal_takeaway">Takeaway</option>
+                            <option value="meal_delivery">Delivery</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button id="search-btn" onclick="search()">Search</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-divider"></div>
+
+            <!-- Right: location + pipeline -->
+            <div class="panel-group">
+                <h2>Location &amp; Pipeline</h2>
+                <div class="controls-row">
+                    <div class="filter-group grow">
+                        <label for="location-name">Location</label>
+                        <input id="location-name" type="text"
+                               placeholder="e.g. Tempe, AZ" value="Tempe, AZ" />
+                    </div>
+                    <div class="filter-group coord-field">
+                        <label for="loc-lat">Lat</label>
+                        <input id="loc-lat" type="number" step="0.0001"
+                               value="33.4255" />
+                    </div>
+                    <div class="filter-group coord-field">
+                        <label for="loc-lng">Lng</label>
+                        <input id="loc-lng" type="number" step="0.0001"
+                               value="-111.9400" />
+                    </div>
+                    <div class="filter-group">
+                        <button id="gps-btn" onclick="detectGPS()" title="Use device GPS">
+                            &#9673; GPS
+                        </button>
+                    </div>
+                    <div class="filter-group">
+                        <button id="trigger-btn" onclick="triggerPipeline()">
+                            Run Pipeline
+                        </button>
+                    </div>
+                </div>
+                <div id="trigger-status" class="trigger-status hidden"></div>
+            </div>
+
         </div>
-    </header>
+    </section>
 
-    <main class="container">
-        <!-- Filters Section -->
-        <section class="filters">
-            <h2>Find Your Perfect Restaurant</h2>
-            <div class="filter-controls">
-                <div class="filter-group">
-                    <label for="min-rating">Minimum Rating</label>
-                    <select id="min-rating">
-                        <option value="">Any</option>
-                        <option value="3">3+ Stars</option>
-                        <option value="3.5">3.5+ Stars</option>
-                        <option value="4">4+ Stars</option>
-                        <option value="4.5">4.5+ Stars</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label for="cuisine">Cuisine Type</label>
-                    <select id="cuisine">
-                        <option value="">All Cuisines</option>
-                        <option value="italian">Italian</option>
-                        <option value="mexican">Mexican</option>
-                        <option value="japanese">Japanese</option>
-                        <option value="indian">Indian</option>
-                        <option value="american">American</option>
-                        <option value="chinese">Chinese</option>
-                    </select>
-                </div>
-                <button id="search-btn" onclick="loadRecommendations()">
-                    🔍 Search
-                </button>
+    <!-- Data Source Hint -->
+    <div id="data-source-tag" class="data-source-tag hidden"></div>
+
+    <!-- Results -->
+    <section class="results-section">
+        <div class="section-header">
+            <h2 id="results-title">Recommendations</h2>
+            <span id="results-count" class="count-badge"></span>
+        </div>
+        <div class="grid" id="restaurant-grid">
+            <div class="loading">Loading&#8230;</div>
+        </div>
+    </section>
+
+    <!-- Reviews Modal -->
+    <div id="reviews-modal" class="modal-overlay hidden" onclick="closeModal(event)">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="modal-title">Reviews</h3>
+                <button class="modal-close" onclick="closeReviewsModal()">&times;</button>
             </div>
-        </section>
+            <div id="modal-body" class="modal-body"></div>
+        </div>
+    </div>
 
-        <!-- Pipeline Status -->
-        <section class="status-bar" id="status-bar">
-            <span class="status-dot"></span>
-            <span id="status-text">Loading pipeline status...</span>
-        </section>
-
-        <!-- Recommendations Grid -->
-        <section class="recommendations" id="recommendations">
-            <h2>Top Recommendations</h2>
-            <div class="grid" id="restaurant-grid">
-                <div class="loading">Loading recommendations...</div>
-            </div>
-        </section>
-
-        <!-- Sentiment Analytics -->
-        <section class="analytics">
+    <!-- Sentiment Analytics -->
+    <section class="analytics-section">
+        <div class="section-header">
             <h2>Sentiment Analytics</h2>
-            <div class="analytics-grid" id="analytics-grid">
-                <div class="loading">Loading analytics...</div>
-            </div>
-        </section>
-    </main>
-
-    <footer>
-        <div class="container">
-            <p>Powered by NLP Sentiment Analysis | Data refreshed daily via Apache Airflow</p>
+            <span class="tag">PostgreSQL Warehouse</span>
         </div>
-    </footer>
+        <div class="analytics-grid" id="analytics-grid">
+            <div class="loading">Loading analytics&#8230;</div>
+        </div>
+    </section>
 
-    <script>
-        const API_BASE = '/api/v1';
+</main>
 
-        async function loadRecommendations() {
-            const minRating = document.getElementById('min-rating').value;
-            const cuisine = document.getElementById('cuisine').value;
+<footer>
+    <div class="container">
+        Powered by BERT Sentiment Analysis &middot; Refreshed nightly via Apache Airflow
+    </div>
+</footer>
 
-            let url = `${API_BASE}/recommendations?limit=20`;
-            if (minRating) url += `&min_rating=${minRating}`;
-            if (cuisine) url += `&cuisine=${cuisine}`;
+<script>
+const API = '/api/v1';
 
-            try {
-                const response = await fetch(url);
-                const data = await response.json();
-                renderRecommendations(data.recommendations || []);
-            } catch (error) {
-                document.getElementById('restaurant-grid').innerHTML =
-                    '<div class="error">Failed to load recommendations. Is the pipeline running?</div>';
-            }
+/* Type formatting */
+const TYPE_LABELS = {
+    restaurant: 'Restaurant', bar: 'Bar', cafe: 'Cafe', bakery: 'Bakery',
+    night_club: 'Night Club', meal_takeaway: 'Takeaway', meal_delivery: 'Delivery',
+    lodging: 'Hotel', museum: 'Museum', spa: 'Spa',
+    tourist_attraction: 'Tourist Attraction', bowling_alley: 'Bowling',
+    grocery_or_supermarket: 'Grocery',
+};
+const GENERIC = new Set([
+    'point_of_interest','establishment','food','store','premise',
+    'geocode','subpremise',
+]);
+
+function formatTypes(types) {
+    if (!types || !types.length) return ['Restaurant'];
+    const specific = (types || []).filter(t => !GENERIC.has(t));
+    if (!specific.length) return ['Restaurant'];
+    return specific.slice(0, 3).map(t => TYPE_LABELS[t] || t.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+}
+
+/* GPS */
+function detectGPS() {
+    const btn = document.getElementById('gps-btn');
+    if (!navigator.geolocation) {
+        showTriggerStatus('GPS not supported by this browser.', 'error');
+        return;
+    }
+    btn.textContent = '...';
+    btn.disabled = true;
+    navigator.geolocation.getCurrentPosition(
+        function(pos) {
+            document.getElementById('loc-lat').value  = pos.coords.latitude.toFixed(6);
+            document.getElementById('loc-lng').value  = pos.coords.longitude.toFixed(6);
+            document.getElementById('location-name').value = 'Current Location';
+            btn.innerHTML = '&#9673; GPS';
+            btn.disabled  = false;
+            showTriggerStatus('GPS coordinates detected.', 'success');
+        },
+        function(err) {
+            btn.innerHTML = '&#9673; GPS';
+            btn.disabled  = false;
+            showTriggerStatus('GPS error: ' + err.message, 'error');
+        },
+        { timeout: 8000 }
+    );
+}
+
+/* Pipeline Trigger */
+async function triggerPipeline() {
+    const btn  = document.getElementById('trigger-btn');
+    const lat  = parseFloat(document.getElementById('loc-lat').value);
+    const lng  = parseFloat(document.getElementById('loc-lng').value);
+    const name = (document.getElementById('location-name').value || 'Tempe, AZ').trim();
+
+    btn.textContent = 'Triggering...';
+    btn.disabled    = true;
+
+    const body = { location_name: name };
+    if (!isNaN(lat) && !isNaN(lng)) { body.lat = lat; body.lng = lng; }
+
+    try {
+        const res  = await fetch(API + '/pipeline/trigger', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (data.status === 'triggered') {
+            showTriggerStatus(
+                'Pipeline triggered for "' + name + '". Results appear after the run (~10 min).',
+                'success'
+            );
+        } else {
+            showTriggerStatus('Trigger failed: ' + (data.detail || 'unknown error'), 'error');
+        }
+    } catch (e) {
+        showTriggerStatus('Could not reach server: ' + e.message, 'error');
+    } finally {
+        btn.textContent = 'Run Pipeline';
+        btn.disabled    = false;
+    }
+}
+
+function showTriggerStatus(msg, type) {
+    const el = document.getElementById('trigger-status');
+    el.textContent = msg;
+    el.className   = 'trigger-status ' + type;
+    el.classList.remove('hidden');
+}
+
+/* Search */
+async function search() {
+    const btn     = document.getElementById('search-btn');
+    const q       = document.getElementById('search-q').value.trim();
+    const rating  = document.getElementById('min-rating').value;
+    const cuisine = document.getElementById('cuisine').value;
+
+    btn.textContent = 'Searching...';
+    btn.disabled    = true;
+    setGridLoading();
+
+    try {
+        if (q || rating || cuisine) {
+            var url = API + '/restaurants/search?limit=30';
+            if (q)       url += '&q='          + encodeURIComponent(q);
+            if (rating)  url += '&min_rating='  + rating;
+            if (cuisine) url += '&cuisine='     + encodeURIComponent(cuisine);
+            const res  = await fetch(url);
+            const data = await res.json();
+            renderRestaurantSearch(data);
+        } else {
+            const res  = await fetch(API + '/recommendations?limit=20');
+            const data = await res.json();
+            renderRecommendations(data);
+        }
+    } catch (e) {
+        document.getElementById('restaurant-grid').innerHTML =
+            '<div class="error">Request failed: ' + e.message + '</div>';
+    } finally {
+        btn.textContent = 'Search';
+        btn.disabled    = false;
+    }
+}
+
+/* Renderers */
+function renderRecommendations(data) {
+    document.getElementById('results-title').textContent = 'Recommendations';
+    document.getElementById('results-count').textContent =
+        data.count ? data.count + ' results' : '';
+
+    const tag = document.getElementById('data-source-tag');
+    if (data.message) {
+        tag.textContent = data.message;
+        tag.className   = 'data-source-tag info';
+        tag.classList.remove('hidden');
+    } else {
+        tag.classList.add('hidden');
+    }
+
+    const recs = data.recommendations || [];
+    if (!recs.length) {
+        document.getElementById('restaurant-grid').innerHTML =
+            '<div class="empty">No data yet. Click <b>Run Pipeline</b> to fetch fresh reviews.</div>';
+        return;
+    }
+
+    document.getElementById('restaurant-grid').innerHTML = recs.map(function(r, i) {
+        return restaurantCard({
+            rank:          r.rank || i + 1,
+            place_id:      r.place_id,
+            name:          r.restaurant_name || 'Unknown',
+            nlp_score:     r.avg_predicted_score,
+            sec_score:     r.recommendation_score,
+            sec_label:     'Rec. Score',
+            review_count:  r.review_count,
+            positive_ratio:r.positive_ratio,
+            types:         r.types || [],
+        });
+    }).join('');
+}
+
+function renderRestaurantSearch(data) {
+    document.getElementById('results-title').textContent = 'Search Results';
+    document.getElementById('results-count').textContent =
+        data.count ? data.count + ' results' : '';
+    document.getElementById('data-source-tag').classList.add('hidden');
+
+    const restaurants = data.restaurants || [];
+    if (!restaurants.length) {
+        document.getElementById('restaurant-grid').innerHTML =
+            '<div class="empty">' + (data.message || 'No restaurants match your search.') + '</div>';
+        return;
+    }
+
+    document.getElementById('restaurant-grid').innerHTML = restaurants.map(function(r, i) {
+        return restaurantCard({
+            rank:           i + 1,
+            place_id:       r.place_id,
+            name:           r.name || 'Unknown',
+            nlp_score:      r.avg_nlp_score,
+            sec_score:      r.rating,
+            sec_label:      'Google &#9733;',
+            review_count:   r.nlp_review_count || r.total_ratings || 0,
+            positive_ratio: r.positive_ratio,
+            types:          r.types || [],
+        });
+    }).join('');
+}
+
+function restaurantCard(o) {
+    var nlp  = (o.nlp_score   || 0).toFixed(2);
+    var sec  = (o.sec_score   || 0).toFixed(2);
+    var pos  = Math.max(0, Math.min(100, (o.positive_ratio || 0) * 100)).toFixed(0);
+    var cls  = o.nlp_score >= 4 ? 'very-positive'
+             : o.nlp_score >= 3 ? 'positive'
+             : o.nlp_score >= 2 ? 'negative'
+             : 'very-negative';
+
+    var typeLabels = formatTypes(o.types);
+    var typeTags   = typeLabels.map(function(t) {
+        var key = t.toLowerCase().replace(/ /g, '-');
+        return '<span class="type-tag type-' + key + '">' + escHtml(t) + '</span>';
+    }).join('');
+
+    var pid  = (o.place_id || '').replace(/'/g, "\\'");
+    var name = escHtml(o.name);
+
+    return '<div class="restaurant-card" onclick="loadReviews(\'' + pid + '\',\'' + name + '\')">' +
+        '<div class="card-header">' +
+            '<span class="rank">#' + o.rank + '</span>' +
+            '<div class="card-title">' +
+                '<h3>' + name + '</h3>' +
+                '<div class="type-tags">' + typeTags + '</div>' +
+            '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+            '<div class="score-row">' +
+                '<div class="score"><span class="score-value ' + cls + '">' + nlp + '</span><span class="score-label">NLP Score</span></div>' +
+                '<div class="score"><span class="score-value">' + sec + '</span><span class="score-label">' + (o.sec_label || 'Score') + '</span></div>' +
+                '<div class="score"><span class="score-value">' + o.review_count + '</span><span class="score-label">Reviews</span></div>' +
+            '</div>' +
+            '<div class="sentiment-bar" title="' + pos + '% positive">' +
+                '<div class="bar-fill" style="width:' + pos + '%"></div>' +
+            '</div>' +
+            '<div class="bar-label">' + pos + '% positive sentiment</div>' +
+        '</div>' +
+        '<div class="card-footer">Click to view reviews</div>' +
+    '</div>';
+}
+
+function escHtml(s) {
+    return (s || '').replace(/[&<>"']/g, function(c) {
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+}
+
+/* Reviews Modal */
+async function loadReviews(placeId, name) {
+    document.getElementById('modal-title').textContent = name;
+    document.getElementById('modal-body').innerHTML = '<div class="loading">Loading reviews...</div>';
+    document.getElementById('reviews-modal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    try {
+        const res     = await fetch(API + '/restaurants/' + placeId + '/reviews');
+        const data    = await res.json();
+        const reviews = data.reviews || [];
+
+        if (!reviews.length) {
+            document.getElementById('modal-body').innerHTML =
+                '<div class="empty">No reviews found.</div>';
+            return;
         }
 
-        function renderRecommendations(recommendations) {
-            const grid = document.getElementById('restaurant-grid');
+        document.getElementById('modal-body').innerHTML = reviews.map(function(r) {
+            var score = r.predicted_score || r.rating || 0;
+            var cls   = score >= 4 ? 'very-positive'
+                      : score >= 3 ? 'positive'
+                      : score >= 2 ? 'negative' : 'very-negative';
+            return '<div class="review-item">' +
+                '<div class="review-header">' +
+                    '<strong class="review-author">' + escHtml(r.author_name || 'Anonymous') + '</strong>' +
+                    '<span class="review-score ' + cls + '">' + Number(score).toFixed(2) + '</span>' +
+                    '<span class="review-sentiment">' + escHtml(r.sentiment_label || '') + '</span>' +
+                '</div>' +
+                '<p class="review-text">' + escHtml(r.text || r.text_cleaned || '&#8212;') + '</p>' +
+                '<div class="review-meta">' + escHtml(r.relative_time || r.review_time || '') + '</div>' +
+            '</div>';
+        }).join('');
+    } catch (e) {
+        document.getElementById('modal-body').innerHTML =
+            '<div class="error">Failed to load reviews: ' + e.message + '</div>';
+    }
+}
 
-            if (!recommendations.length) {
-                grid.innerHTML = '<div class="empty">No recommendations found. Run the pipeline first!</div>';
-                return;
-            }
+function closeReviewsModal() {
+    document.getElementById('reviews-modal').classList.add('hidden');
+    document.body.style.overflow = '';
+}
 
-            grid.innerHTML = recommendations.map((r, i) => `
-                <div class="restaurant-card">
-                    <div class="card-header">
-                        <span class="rank">#${r.rank || i + 1}</span>
-                        <h3>${r.restaurant_name || 'Unknown Restaurant'}</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="score-row">
-                            <div class="score">
-                                <span class="score-value">${(r.avg_predicted_score || 0).toFixed(1)}</span>
-                                <span class="score-label">NLP Score</span>
-                            </div>
-                            <div class="score">
-                                <span class="score-value">${(r.recommendation_score || 0).toFixed(1)}</span>
-                                <span class="score-label">Rec. Score</span>
-                            </div>
-                            <div class="score">
-                                <span class="score-value">${r.review_count || 0}</span>
-                                <span class="score-label">Reviews</span>
-                            </div>
-                        </div>
-                        <div class="sentiment-bar">
-                            <div class="positive" style="width: ${(r.positive_ratio || 0) * 100}%">
-                                ${((r.positive_ratio || 0) * 100).toFixed(0)}% positive
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
+function closeModal(e) {
+    if (e.target === document.getElementById('reviews-modal')) closeReviewsModal();
+}
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeReviewsModal();
+});
+
+/* Health */
+async function loadHealthStatus() {
+    try {
+        const res  = await fetch(API + '/health');
+        const data = await res.json();
+        const c    = data.collections || {};
+        document.getElementById('status-text').textContent =
+            'Pipeline ' + data.status + ' | ' +
+            (c.restaurants || 0) + ' restaurants | ' +
+            (c.raw_reviews || 0) + ' raw reviews | ' +
+            (c.processed_reviews || 0) + ' processed';
+        if (data.status === 'healthy') {
+            document.getElementById('status-bar').classList.add('active');
+        }
+    } catch (e) {
+        document.getElementById('status-text').textContent = 'Pipeline offline';
+    }
+}
+
+/* Analytics */
+async function loadAnalytics() {
+    const grid = document.getElementById('analytics-grid');
+    try {
+        const res  = await fetch(API + '/analytics/sentiment');
+        const data = await res.json();
+
+        if (data.error || !data.analytics || !data.analytics.length) {
+            grid.innerHTML = '<div class="empty">No warehouse analytics yet (requires PostgreSQL + pipeline run).</div>';
+            return;
         }
 
-        async function loadHealthStatus() {
-            try {
-                const response = await fetch(`${API_BASE}/health`);
-                const data = await response.json();
-                const statusText = document.getElementById('status-text');
-                const statusBar = document.getElementById('status-bar');
-                const c = data.collections || {};
-                statusText.textContent =
-                    `Pipeline Active | ${c.restaurants || 0} restaurants | ` +
-                    `${c.raw_reviews || 0} raw reviews | ` +
-                    `${c.processed_reviews || 0} processed`;
-                statusBar.classList.add('active');
-            } catch {
-                document.getElementById('status-text').textContent = 'Pipeline offline';
-            }
-        }
+        grid.innerHTML = data.analytics.slice(0, 12).map(function(a) {
+            return '<div class="analytics-card">' +
+                '<h4>' + escHtml(a.name) + '</h4>' +
+                '<div class="metrics">' +
+                    '<span>NLP <strong>' + a.avg_nlp_score + '</strong></span>' +
+                    '<span>Google <strong>' + a.avg_actual_rating + '</strong></span>' +
+                    '<span>Reviews <strong>' + a.prediction_count + '</strong></span>' +
+                    '<span class="pill positive-pill">+' + a.positive_count + '</span>' +
+                    '<span class="pill negative-pill">-' + a.negative_count + '</span>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+    } catch (e) {
+        grid.innerHTML = '<div class="empty">Analytics unavailable</div>';
+    }
+}
 
-        async function loadAnalytics() {
-            try {
-                const response = await fetch(`${API_BASE}/analytics/sentiment`);
-                const data = await response.json();
-                renderAnalytics(data.analytics || []);
-            } catch {
-                document.getElementById('analytics-grid').innerHTML =
-                    '<div class="error">Analytics unavailable</div>';
-            }
-        }
+/* Helpers */
+function setGridLoading() {
+    document.getElementById('restaurant-grid').innerHTML = '<div class="loading">Searching...</div>';
+    document.getElementById('results-count').textContent = '';
+}
 
-        function renderAnalytics(analytics) {
-            const grid = document.getElementById('analytics-grid');
-            if (!analytics.length) {
-                grid.innerHTML = '<div class="empty">No analytics data yet</div>';
-                return;
-            }
+/* Init */
+document.addEventListener('DOMContentLoaded', function() {
+    document.getElementById('search-q').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') search();
+    });
+    loadHealthStatus();
+    search();
+    loadAnalytics();
+});
+</script>
 
-            grid.innerHTML = analytics.slice(0, 10).map(a => `
-                <div class="analytics-card">
-                    <h4>${a.name}</h4>
-                    <div class="metrics">
-                        <span>NLP: <strong>${a.avg_nlp_score}</strong></span>
-                        <span>Actual: <strong>${a.avg_actual_rating}</strong></span>
-                        <span>Reviews: <strong>${a.prediction_count}</strong></span>
-                        <span>👍 ${a.positive_count} | 👎 ${a.negative_count}</span>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        // Initialize
-        loadHealthStatus();
-        loadRecommendations();
-        loadAnalytics();
-    </script>
 </body>
 </html>
