@@ -45,3 +45,4 @@ Thumbs.db
 
 # Notebooks
 .ipynb_checkpoints/
+generate_architecture_pdf.py

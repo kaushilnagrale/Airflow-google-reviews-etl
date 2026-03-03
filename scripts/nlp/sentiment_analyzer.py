@@ -7,6 +7,12 @@ and recommendation scoring.
 from collections import defaultdict
 from datetime import datetime, timezone
 import math
+from pathlib import Path
+import sys
+
+# Allow direct execution: `python3 scripts/nlp/sentiment_analyzer.py`
+if __package__ is None or __package__ == "":
+    sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from scripts.nlp.score_predictor import ReviewScorePredictor
 from scripts.utils.logger import get_logger
