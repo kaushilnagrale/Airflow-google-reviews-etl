@@ -11,6 +11,7 @@ x-airflow-common: &airflow-common
     - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres-airflow:5432/airflow
     - AIRFLOW__CORE__FERNET_KEY=your_fernet_key_here
     - AIRFLOW__WEBSERVER__SECRET_KEY=your_secret_key_here
+    - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session
     - GOOGLE_API_KEY=${GOOGLE_API_KEY}
     - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
     - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
@@ -184,6 +185,9 @@ services:
       - POSTGRES_DB=review_warehouse
       - POSTGRES_USER=pipeline_user
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-secure_password}
+      - AIRFLOW_BASE_URL=http://airflow-webserver:8080
+      - AIRFLOW_USER=admin
+      - AIRFLOW_PASSWORD=admin
     depends_on:
       - mongo
       - postgres-warehouse

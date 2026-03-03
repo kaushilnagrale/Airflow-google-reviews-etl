@@ -76,15 +76,20 @@ class ReviewScorePredictor:
         with torch.no_grad():
             outputs = self.model(**inputs)
             probabilities = torch.softmax(outputs.logits, dim=-1)
-            predicted_class = torch.argmax(probabilities, dim=-1).item()
-            confidence = probabilities[0][predicted_class].item()
 
-        # Model outputs classes 0-4, map to scores 1-5
-        predicted_score = predicted_class + 1
+        # Weighted average (expected value) over classes 1-5 gives a continuous,
+        # nuanced score instead of argmax which collapses to 5 for all positive reviews.
+        scores_tensor = torch.arange(1, 6, dtype=torch.float32).to(self.device)
+        predicted_score = (probabilities[0] * scores_tensor).sum().item()
+
+        # Argmax class is used only for the discrete sentiment label
+        predicted_class = torch.argmax(probabilities, dim=-1).item()
+        confidence = probabilities[0][predicted_class].item()
+        sentiment_score = predicted_class + 1  # 1-5 label bucket
 
         return {
-            "predicted_score": predicted_score,
-            "sentiment": self.SENTIMENT_MAP.get(predicted_score, "neutral"),
+            "predicted_score": round(predicted_score, 3),
+            "sentiment": self.SENTIMENT_MAP.get(sentiment_score, "neutral"),
             "confidence": round(confidence, 4),
             "text_cleaned": cleaned,
         }
@@ -96,13 +101,14 @@ class ReviewScorePredictor:
         """
         results = []
         cleaned_texts = self.preprocessor.clean_batch(texts)
+        scores_tensor = torch.arange(1, 6, dtype=torch.float32).to(self.device)
 
         for i in tqdm(range(0, len(cleaned_texts), self.batch_size),
                       desc="Predicting scores"):
             batch = cleaned_texts[i: i + self.batch_size]
 
-            # Handle empty texts in batch
-            batch_results = []
+            # Pre-allocate results to preserve original ordering
+            batch_results = [None] * len(batch)
             valid_texts = []
             valid_indices = []
 
@@ -111,12 +117,12 @@ class ReviewScorePredictor:
                     valid_texts.append(text)
                     valid_indices.append(j)
                 else:
-                    batch_results.append({
-                        "predicted_score": 3,
+                    batch_results[j] = {
+                        "predicted_score": 3.0,
                         "sentiment": "neutral",
                         "confidence": 0.0,
                         "text_cleaned": "",
-                    })
+                    }
 
             if valid_texts:
                 inputs = self.tokenizer(
@@ -130,19 +136,23 @@ class ReviewScorePredictor:
                 with torch.no_grad():
                     outputs = self.model(**inputs)
                     probabilities = torch.softmax(outputs.logits, dim=-1)
-                    predicted_classes = torch.argmax(probabilities, dim=-1)
-                    confidences = probabilities.max(dim=-1).values
 
-                for idx, (cls, conf, text) in enumerate(
-                    zip(predicted_classes, confidences, valid_texts)
-                ):
-                    score = cls.item() + 1
-                    batch_results.insert(valid_indices[idx], {
-                        "predicted_score": score,
-                        "sentiment": self.SENTIMENT_MAP.get(score, "neutral"),
-                        "confidence": round(conf.item(), 4),
-                        "text_cleaned": text,
-                    })
+                # Weighted average gives a continuous score (e.g. 4.72) instead of
+                # argmax which collapses most positive reviews to 5.
+                weighted_scores = (probabilities * scores_tensor).sum(dim=-1)
+                predicted_classes = torch.argmax(probabilities, dim=-1)
+                confidences = probabilities.max(dim=-1).values
+
+                for local_idx, orig_idx in enumerate(valid_indices):
+                    score = weighted_scores[local_idx].item()
+                    label_cls = predicted_classes[local_idx].item()
+                    label_score = label_cls + 1  # 1-5 for sentiment label only
+                    batch_results[orig_idx] = {
+                        "predicted_score": round(score, 3),
+                        "sentiment": self.SENTIMENT_MAP.get(label_score, "neutral"),
+                        "confidence": round(confidences[local_idx].item(), 4),
+                        "text_cleaned": valid_texts[local_idx],
+                    }
 
             results.extend(batch_results)
 

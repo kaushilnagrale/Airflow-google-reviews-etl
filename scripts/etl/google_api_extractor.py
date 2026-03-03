@@ -178,12 +178,46 @@ class GoogleAPIExtractor:
             "extracted_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    def run_full_extraction(self) -> Generator[dict, None, None]:
+    # Default location: Tempe, AZ  (used when no GPS coordinates are supplied)
+    DEFAULT_LOCATION = {"name": "Tempe", "lat": 33.4255, "lng": -111.9400}
+
+    def run_full_extraction(
+        self,
+        user_lat: float = None,
+        user_lng: float = None,
+        location_name: str = None,
+    ) -> Generator[dict, None, None]:
         """
-        Run full extraction pipeline across all configured locations.
-        Yields batches of {restaurant_metadata, reviews} dicts.
+        Run full extraction pipeline.
+
+        If ``user_lat`` / ``user_lng`` are provided (e.g. from device GPS), only
+        that single location is searched.  Otherwise falls back to the locations
+        defined in pipeline_config.yaml (default: Tempe, AZ).
+
+        Args:
+            user_lat:      GPS latitude from the user's device.
+            user_lng:      GPS longitude from the user's device.
+            location_name: Human-readable label for the GPS point (optional).
         """
-        locations = self.api_config["search_locations"]
+        if user_lat is not None and user_lng is not None:
+            locations = [{
+                "name": location_name or f"GPS({user_lat:.4f},{user_lng:.4f})",
+                "lat": user_lat,
+                "lng": user_lng,
+            }]
+            logger.info(
+                f"Using GPS location: {locations[0]['name']} "
+                f"({user_lat}, {user_lng})"
+            )
+        else:
+            configured = self.api_config.get("search_locations", [])
+            # Fall back to Tempe default if the config list is empty
+            locations = configured if configured else [self.DEFAULT_LOCATION]
+            logger.info(
+                f"No GPS provided — using {len(locations)} configured location(s); "
+                f"default is '{self.DEFAULT_LOCATION['name']}'"
+            )
+
         total_reviews = 0
         total_restaurants = 0
 

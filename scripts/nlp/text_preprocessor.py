@@ -15,11 +15,25 @@ logger = get_logger("text_preprocessor")
 class TextPreprocessor:
     """Cleans and preprocesses review text for NLP models."""
 
-    # Common contractions expansion map
+    # Common contractions expansion map.
+    # NOTE: generic "'s" → "is" is intentionally omitted — it incorrectly transforms
+    # possessives ("restaurant's" → "restaurant is") which corrupts sentence semantics
+    # and confuses the sentiment model. Pronoun forms are handled explicitly instead.
     CONTRACTIONS = {
-        "won't": "will not", "can't": "cannot", "n't": " not",
-        "'re": " are", "'s": " is", "'d": " would",
-        "'ll": " will", "'ve": " have", "'m": " am",
+        "won't": "will not",
+        "can't": "cannot",
+        "n't": " not",        # isn't, wasn't, doesn't, didn't, wouldn't, couldn't …
+        "it's": "it is",
+        "that's": "that is",
+        "what's": "what is",
+        "there's": "there is",
+        "he's": "he is",
+        "she's": "she is",
+        "'re": " are",        # they're, you're, we're
+        "'d": " would",       # I'd, they'd
+        "'ll": " will",       # I'll, they'll
+        "'ve": " have",       # I've, they've
+        "'m": " am",          # I'm
     }
 
     def __init__(self, max_length: int = 512):
